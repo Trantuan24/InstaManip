@@ -3,14 +3,9 @@ __pycache__/
 *.pyc
 *.pt
 
-data/
-!data/train/
-!data/eval/
-!data/ip2p_group_instruct.json
-!data/ip2p_group_keyword.json
+data/ip2p
 pretrained/
-!pretrained/cvlm_llama2_tokenizer_100img_and_224loc_addpatch/added_tokens.json
+!pretrained/added_tokens.json
 src/clip/
-train_output/
-!train_output/.gitkeep
+train_output
 wandb/
