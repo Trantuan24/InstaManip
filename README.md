@@ -30,10 +30,12 @@
 ### Environment
 
 ```shell
-conda env create -f environment.yaml  # THe env name is "instamanip"
+conda env create -f environment.yaml  # The env name is "instamanip"
 ```
 
 ### Dataset
+
+Download the dataset collected in the work [InstructPix2Pix](https://instruct-pix2pix.eecs.berkeley.edu/clip-filtered-dataset/). Unzip all the 30 zip files into the path `./data/ip2p/`.
 
 ### Pre-trained Checkpoints
 
@@ -46,6 +48,8 @@ conda env create -f environment.yaml  # THe env name is "instamanip"
 
 ## Training
 
+Run the following command to train the model on 8 GPUs. You can change the number of GPUs by updating `--nproc_per_node` in `train.sh`.
+
 ```shell
 bash scripts/train.sh
 ```
@@ -53,24 +57,26 @@ bash scripts/train.sh
 
 ## Evaluation
 
-Go to the checkpont directory your want to evaluate.
- Convert the model weights.
+Go to the checkpont directory that you want to evaluate. Convert the model weights.
+
 ```shell
 python zero_to_fp32.py . ./pytorch_model.bin
 ```
 
-Go back to the project root directory.
+Go back to the project root directory and run the following commands. The inference results will be saved in `checkpoints-xxxx/inference-xxxx-xx`.
 
 ```shell
 # In distribution
-python src/inference/eval_model.py --ckpt ./train_out/your_path/checkpoints-xxxx/pytorch_model.bin -- setting in_dist
+python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoints-xxxx/pytorch_model.bin --setting in_dist
 
 # Out of distribution
-python src/inference/eval_model.py --ckpt ./train_out/your_path/checkpoints-xxxx/pytorch_model.bin -- setting out_of_dist
+python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoints-xxxx/pytorch_model.bin --setting out_of_dist
 ```
 
 
 ## Metrics
+
+Run the following command.
 
 ```shell
 python src/metrics/metrics.py  --gen_path ./train_output/your_path/checkpoints-xxxx/inference-xxxx-xx
