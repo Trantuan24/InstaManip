@@ -1,6 +1,5 @@
 PROJ_PATH='.'
-exp_name='debug'
-# exp_name='InstaManip'
+exp_name='InstaManip'
 OUTPUT_PATH=${PROJ_PATH}/train_output/${exp_name}
 
 mkdir -p $OUTPUT_PATH

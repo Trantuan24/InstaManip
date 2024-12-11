@@ -12,7 +12,6 @@ datapipes:
     batch_size: 60  # [Remember to check]
     # batch_size: 50  # (2-shot)
     # batch_size: 35  # (3-shot)
-    # batch_size: 40  # (on h100)
     # batch_size: 10  # for debug only
     instruction_prompt: "[INST] {instruction} [/INST]\n"
     min_aspect_ratio: 0.6
