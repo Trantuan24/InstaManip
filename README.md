@@ -63,14 +63,14 @@ Go to the checkpont directory that you want to evaluate. Convert the model weigh
 python zero_to_fp32.py . ./pytorch_model.bin
 ```
 
-Go back to the project root directory and run the following commands. The inference results will be saved in `checkpoints-xxxx/inference-xxxx-xx`.
+Go back to the project root directory and run the following commands. The inference results will be saved in `checkpoint-xxxx/inference-xxxx-xx`.
 
 ```shell
 # In distribution
-python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoints-xxxx/pytorch_model.bin --setting in_dist
+python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --setting in_dist
 
 # Out of distribution
-python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoints-xxxx/pytorch_model.bin --setting out_of_dist
+python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --setting out_of_dist
 ```
 
 
@@ -79,7 +79,7 @@ python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoints-x
 Run the following command.
 
 ```shell
-python src/metrics/metrics.py  --gen_path ./train_output/your_path/checkpoints-xxxx/inference-xxxx-xx
+python src/metrics/metrics.py  --gen_path ./train_output/your_path/checkpoint-xxxx/inference-xxxx-xx
 ```
 
 
