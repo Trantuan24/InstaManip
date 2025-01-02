@@ -297,7 +297,7 @@ def decode_in_context_learning_data(item,
     for boi_idx, eoi_idx in zip(boi_indices[1:-2:2], eoi_indices[1:-2:2]):
         ids_exemplar_target_mask[boi_idx+1:eoi_idx] = True
 
-    # Add latent edit mask ******************************************************
+    # Add masks for group self-attention ****************************************
     boe_indices = torch.where(input_ids == boe_token_id)[0].tolist()
     eoe_indices = torch.where(input_ids == eoe_token_id)[0].tolist()
     for boe_idx, eoe_idx in zip(boe_indices, eoe_indices):

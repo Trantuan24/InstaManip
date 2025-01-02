@@ -1,1 +1,1 @@
-from .datapipes import TarArchiveLoader, JsonlParserIterDataPipe
+from .datapipes import JsonlParserIterDataPipe

@@ -43,8 +43,10 @@ pyrootutils.setup_root(__file__, indicator='.project-root', pythonpath=True)
 
 parser = ArgumentParser()
 parser.add_argument("--ckpt", type=str, default=None, help="Path to checkpoints, e.g. /your_path_to/checkpoint-xxxx/pytorch_model.bin")
-parser.add_argument("--setting", type=str, default="in_dist", help="in_dist/out_of_dist")
+parser.add_argument("--example_num", type=int, default=2, help="The number of exemplar image pairs.")
+parser.add_argument("--setting", type=str, default="in_dist", help="in_dist/out_of_dist/out_of_dist_diverse")
 args = parser.parse_args()
+assert args.example_num > 1, "example_num should be greater than 1. You can use eval_model.py to evaluate for 1-shot inference."
 assert args.setting in ["in_dist", "out_of_dist", "out_of_dist_diverse"], "The setting should be picked from in_dist/out_of_dist/out_of_dist_diverse."
 
 BOI_TOKEN = '<img>'
@@ -53,6 +55,10 @@ IMG_TOKEN = '<img_{:05d}>'
 BOE_TOKEN = '<edit>'
 EOE_TOKEN = '</edit>'
 EDIT_TOKEN = '<edit_{:03d}>'
+
+multi_resolution = False
+resolution_grids = ['1x1']
+base_resolution = 448
 
 device = 'cuda'
 dtype = torch.float16
@@ -129,12 +135,11 @@ eoe_token_id = tokenizer.encode(EOE_TOKEN, add_special_tokens=False)[0]  # 32331
 hold_out_test_path = './data/eval'
 image_dir = './data/ip2p'
 group_path = './data/ip2p_group_instruct.json'
-keyword_group_path = "./data/ip2p_group_keyword.json"
+keyword_grou_path = "./data/ip2p_group_keyword.json"
 with open(group_path, 'r') as infile:
     groups = json.load(infile)
-with open(keyword_group_path, 'r') as infile:
+with open(keyword_grou_path, 'r') as infile:
     keyword_groups = json.load(infile)
-
 
 for test_file in tqdm(os.listdir(hold_out_test_path)):
     test_set = read_jsonl(file_path=os.path.join(hold_out_test_path, test_file))
@@ -146,11 +151,17 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
         if args.setting == "in_dist":
             group_id = sample['source_image'].split('/')[0]
             image_id = sample['source_image'].split('/')[1].split('_')[0]
-            candidates = groups[group_id]
+            candidates = groups[group_id][:]  # [:] must be used to copy the list because an element will be popped later
             idx = candidates.index(image_id)
-            exemplar_image_idx = idx + 1 if idx+1 < len(candidates) else 0  # use the next image as exempalr image
-            exemplar_source_image_path = os.path.join(image_dir, group_id, f'{candidates[exemplar_image_idx]}_0.jpg')
-            exemplar_target_image_path = os.path.join(image_dir, group_id, f'{candidates[exemplar_image_idx]}_1.jpg')
+            candidates.pop(idx)  # remove source image from the list in case the source image is used as example.
+
+            exemplar_source_image_paths, exemplar_target_image_paths = list(), list()
+            for i in range (args.example_num):
+                exemplar_image_idx = (idx + i) % len(candidates)  # use the next few images as exemplar image
+                exemplar_source_image_path = os.path.join(image_dir, group_id, f'{candidates[exemplar_image_idx]}_0.jpg')
+                exemplar_target_image_path = os.path.join(image_dir, group_id, f'{candidates[exemplar_image_idx]}_1.jpg')
+                exemplar_source_image_paths.append(exemplar_source_image_path)
+                exemplar_target_image_paths.append(exemplar_target_image_path)
 
         elif args.setting == "out_of_dist":
             keyword = test_file.split(".")[0]
@@ -160,27 +171,63 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
             group_idx = group_candidates.index(group_id)
             exemplar_group_idx = group_idx + 1 if group_idx+1 < len(group_candidates) else 0  # use the next group as exemplar group
             exemplar_group_id = group_candidates[exemplar_group_idx]
-
             candidates = groups[exemplar_group_id]
-            exemplar_source_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[0]}_0.jpg')  # use the first image pair as reference
-            exemplar_target_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[0]}_1.jpg')
+
+            exemplar_source_image_paths, exemplar_target_image_paths = list(), list()
+            for i in range (args.example_num):
+                exemplar_image_idx = i % len(candidates)  # use the first few image pairs as reference
+                exemplar_source_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[exemplar_image_idx]}_0.jpg')
+                exemplar_target_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[exemplar_image_idx]}_1.jpg')
+                exemplar_source_image_paths.append(exemplar_source_image_path)
+                exemplar_target_image_paths.append(exemplar_target_image_path)
+
+        elif args.setting == "out_of_dist_diverse":
+            keyword = test_file.split(".")[0]
+            group_id = sample['source_image'].split('/')[0]
+            image_id = sample['source_image'].split('/')[1].split('_')[0]
+            group_candidates = keyword_groups[keyword][:]  # [:] must be used to copy the list because an element will be popped later
+            group_idx = group_candidates.index(group_id)
+            group_candidates.pop(group_idx)
+            exemplar_group_idxes = [(group_idx + i) % len(group_candidates) for i in range(args.example_num)]
+            exemplar_group_ids = [group_candidates[idx] for idx in exemplar_group_idxes]
+
+            exemplar_source_image_paths, exemplar_target_image_paths = list(), list()
+            exemplar_image_idxes = dict()  # record last exemplar_image_idx for each group
+            for i in range(args.example_num):
+                exemplar_group_id = exemplar_group_ids[i]
+                candidates = groups[exemplar_group_id]
+                exemplar_image_idx = exemplar_image_idxes[exemplar_group_id] if exemplar_group_id in exemplar_image_idxes else 0
+                exemplar_source_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[exemplar_image_idx % len(candidates)]}_0.jpg')  # use the first few image pairs as reference
+                exemplar_target_image_path = os.path.join(image_dir, exemplar_group_id, f'{candidates[exemplar_image_idx % len(candidates)]}_1.jpg')
+                exemplar_source_image_paths.append(exemplar_source_image_path)
+                exemplar_target_image_paths.append(exemplar_target_image_path)
+                exemplar_image_idxes[exemplar_group_id] = exemplar_image_idx + 1
 
         else:
             raise ValueError
 
         image = Image.open(source_image_path).convert('RGB')
         source_image = image.resize(generated_resolution)
-        exemplar_source_image = Image.open(exemplar_source_image_path).convert('RGB')
-        exemplar_source_image = exemplar_source_image.resize(generated_resolution)
-        exemplar_target_image = Image.open(exemplar_target_image_path).convert('RGB')
-        exemplar_target_image = exemplar_target_image.resize(generated_resolution)
-
         image_tensor = image_transform(image).unsqueeze(0)
         embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
-        exemplar_source_image_tensor = image_transform(exemplar_source_image).unsqueeze(0)
-        exemplar_source_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
-        exemplar_target_image_tensor = image_transform(exemplar_target_image).unsqueeze(0)
-        exemplar_target_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+
+        exemplar_source_image_tensors, exemplar_target_image_tensors = list(), list()
+        exemplar_source_embeds_cmp_masks, exemplar_target_embeds_cmp_masks = list(), list()
+        for exemplar_source_image_path, exemplar_target_image_path in zip(exemplar_source_image_paths, exemplar_target_image_paths):
+            exemplar_source_image = Image.open(exemplar_source_image_path).convert('RGB')
+            exemplar_source_image = exemplar_source_image.resize(generated_resolution)
+            exemplar_target_image = Image.open(exemplar_target_image_path).convert('RGB')
+            exemplar_target_image = exemplar_target_image.resize(generated_resolution)
+
+            exemplar_source_image_tensor = image_transform(exemplar_source_image).unsqueeze(0)
+            exemplar_source_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+            exemplar_target_image_tensor = image_transform(exemplar_target_image).unsqueeze(0)
+            exemplar_target_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+
+            exemplar_source_image_tensors.append(exemplar_source_image_tensor)
+            exemplar_target_image_tensors.append(exemplar_target_image_tensor)
+            exemplar_source_embeds_cmp_masks.append(exemplar_source_embeds_cmp_mask)
+            exemplar_target_embeds_cmp_masks.append(exemplar_target_embeds_cmp_mask)
 
         image_tokens = ''
         image_tokens += BOI_TOKEN + ''.join([IMG_TOKEN.format(int(item)) for item in range(num_img_in_tokens)]) + EOI_TOKEN
@@ -192,12 +239,14 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
         patch_position = exemplar_source_patch_position = exemplar_target_patch_position = None
 
         image_tensor = image_tensor.to(device, dtype=dtype)
-        exemplar_source_image_tensor = exemplar_source_image_tensor.to(device, dtype=dtype)
-        exemplar_target_image_tensor = exemplar_target_image_tensor.to(device, dtype=dtype)
+        for i in range(len(exemplar_source_image_tensors)):
+            exemplar_source_image_tensors[i] = exemplar_source_image_tensors[i].to(device, dtype=dtype)
+            exemplar_target_image_tensors[i] = exemplar_target_image_tensors[i].to(device, dtype=dtype)
 
         quoted_instruction = f'"{instruction}"'
         latent_edit_tokens = BOE_TOKEN + ''.join([EDIT_TOKEN.format(int(item)) for item in range(num_latent_edit_tokens)]) + EOE_TOKEN
-        icl_instruction = f"Here is an image manipulation instruction {quoted_instruction}, which can edit source image {exemplar_source_image_tokens} to target image {exemplar_target_image_tokens}. The editing is embedded in {latent_edit_tokens}. Learn from the instruction with the exemplar pairs and apply the same manipulation to this image {image_tokens}."
+        snippet = f" source image {exemplar_source_image_tokens} to target image {exemplar_target_image_tokens}" * args.example_num
+        icl_instruction = f"Here is an image manipulation instruction {quoted_instruction}, which can edit{snippet}. The editing is embedded in {latent_edit_tokens}. Learn from the instruction with the exemplar pairs and apply the same manipulation to this image {image_tokens}."
         prompt = instruction_prompt.format_map({"instruction": icl_instruction})
 
         input_ids = tokenizer.encode(prompt, add_special_tokens=False)
@@ -209,7 +258,7 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
         ids_exemplar_target_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
         ids_latent_edit_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
         scope_mask = xops.LowerTriangularMask().materialize(shape=(input_ids.shape[0], input_ids.shape[0]), dtype=dtype, device=device)
-        
+
         boi_indices = torch.where(input_ids == boi_token_id)[0].tolist()
         eoi_indices = torch.where(input_ids == eoi_token_id)[0].tolist()
 
@@ -240,19 +289,19 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
 
         with torch.no_grad():
             image_embeds = visual_encoder(image_tensor)
-            exemplar_source_image_embeds = visual_encoder(exemplar_source_image_tensor)
-            exemplar_target_image_embeds = visual_encoder(exemplar_target_image_tensor)
+            exemplar_source_image_embeds = visual_encoder(torch.cat(exemplar_source_image_tensors, dim=0))
+            exemplar_target_image_embeds = visual_encoder(torch.cat(exemplar_target_image_tensors, dim=0))
             output = agent_model.generate(tokenizer=tokenizer,
                                           input_ids=input_ids,
                                           image_embeds={'new': image_embeds, 'exemplar_source': exemplar_source_image_embeds, 'exemplar_target': exemplar_target_image_embeds},
-                                          embeds_cmp_mask={'new': embeds_cmp_mask, 'exemplar_source': exemplar_source_embeds_cmp_mask, 'exemplar_target': exemplar_target_embeds_cmp_mask},
+                                          embeds_cmp_mask={'new': embeds_cmp_mask, 'exemplar_source': exemplar_source_embeds_cmp_masks, 'exemplar_target': exemplar_target_embeds_cmp_masks},
                                           patch_positions=None if patch_position is None else {'new': patch_position, 'exemplar_source': exemplar_source_patch_position, 'exemplar_target': exemplar_target_patch_position},
                                           ids_cmp_mask=ids_cmp_mask,
                                           ids_exemplar_source_mask=ids_exemplar_source_mask,
                                           ids_exemplar_target_mask=ids_exemplar_target_mask,
                                           ids_latent_edit_mask=ids_latent_edit_mask,
                                           scope_mask=scope_mask,
-                                          max_new_tokens=500,
+                                          max_new_tokens=450 + 100 * args.example_num,
                                           num_img_gen_tokens=num_img_out_tokens)
         text = re.sub('<[^>]*>', '', output['text'])
         tqdm.write(text)
@@ -261,15 +310,6 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
             images = adapter.generate(image_embeds=output['img_gen_feat'], latent_image=source_image, num_inference_steps=50)
 
             ckpt_path = agent_model_cfg.pretrained_model_path
-            if args.setting == "in_dist":
-                save_path = os.path.join(os.path.dirname(ckpt_path), f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-in-dist', test_file.split('.')[0], 
-                                         f'{source_image_path.split("/")[-2]}_{instruction.replace(" ", "_").replace(".", "")}', source_image_path.split("/")[-1].replace('_0', '_gen'))
-            elif args.setting == "out_of_dist":
-                save_path = os.path.join(os.path.dirname(ckpt_path), f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-out-of-dist', test_file.split('.')[0], 
-                                         f'{source_image_path.split("/")[-2]}_{instruction.replace(" ", "_").replace(".", "")}', source_image_path.split("/")[-1].replace('_0', '_gen'))
-            else:
-                raise ValueError
-            
             save_path = os.path.join(os.path.dirname(ckpt_path), 
                                      f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-{args.example_num}shot-{args.setting.replace("_", "-")}', 
                                      test_file.split('.')[0], 

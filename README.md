@@ -9,7 +9,7 @@
 ### TODO
 
 - [ ] Release the code for single image inference.
-- [ ] Release the code for multi-shot inference.
+- [x] Release the code for multi-shot inference.
 - [ ] Update README of training and evaluation.
 - [ ] Release model weights.
 
@@ -65,6 +65,8 @@ python zero_to_fp32.py . ./pytorch_model.bin
 
 Go back to the project root directory and run the following commands. The inference results will be saved in `checkpoint-xxxx/inference-xxxx-xx`.
 
+Using one pair of examplar images (1-shot):
+
 ```shell
 # In distribution
 python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --setting in_dist
@@ -72,6 +74,22 @@ python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xx
 # Out of distribution
 python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --setting out_of_dist
 ```
+
+Using multiple examplar images (few-shot):
+
+
+```shell
+# In distribution
+python src/inference/eval_model_multishot.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --example_num 2 --setting in_dist
+
+# Out of distribution
+python src/inference/eval_model_multishot.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --example_num 2 --setting out_of_dist
+
+# Out of distribution (diverse)
+python src/inference/eval_model_multishot.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --example_num 2 --setting out_of_dist_diverse
+```
+
+Most instructions have 3-4 instances in the dataset of IP2P. The model will use duplicate exemplar images if ``example_num`` is set above the available instances.
 
 
 ## Metrics
