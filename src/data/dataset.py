@@ -114,7 +114,7 @@ def decode_in_context_learning_data(item,
     exemplar_candidates = [item for item in data_group[group_id] if item != image_id]
     if len(exemplar_candidates) > 0:
         if dynamic_exemplar_num:
-            num_exemplar_pair = random.choice([1, 2, 3])
+            num_exemplar_pair = random.choice(list(range(1, num_exemplar_pair+1)))
         assert num_exemplar_pair > 0, "You need to set a positive number of exemplar pairs."
         if num_exemplar_pair == 1:
             exemplar_image_id = random.choice(exemplar_candidates)

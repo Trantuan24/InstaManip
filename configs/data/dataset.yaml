@@ -10,7 +10,7 @@ datapipes:
     # max_length: 650  # (single resolution, 2-shot, or multi-resolution) the max number of input tokens + respons tokens, including texts and images
     # max_length: 750  # (single resolution, 3-shot, or multi-resolution) the max number of input tokens + respons tokens, including texts and images
     batch_size: 60  # [Remember to check]
-    # batch_size: 50  # (2-shot)
+    # batch_size: 40  # (2-shot)
     # batch_size: 35  # (3-shot)
     # batch_size: 10  # for debug only
     instruction_prompt: "[INST] {instruction} [/INST]\n"
@@ -21,8 +21,8 @@ datapipes:
     num_img_in_tokens: 64
     num_img_out_tokens: 64
     num_latent_edit_tokens: 30
-    num_exemplar_pair: 1
     dynamic_exemplar_num: False
+    num_exemplar_pair: 1  # if dynamic_exemplar_num is False, num_exemplar_pair is the number of exemplar images; if dynamic_exemplar_num is True, num_exemplar_pair is the maximum of exemplar images.
     cycle_count: 10  # do NOT set it as 1 when running code on 8 gpus
     base_resolution: 448
     dataset_name: ip2p
