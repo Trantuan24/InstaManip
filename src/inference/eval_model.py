@@ -115,8 +115,8 @@ adapter.init_pipe(vae=vae,
                   image_transform=image_transform,
                   dtype=dtype,
                   device=device)
-
 print('Init adapter pipe done')
+
 boi_token_id = tokenizer.encode(BOI_TOKEN, add_special_tokens=False)[0]
 eoi_token_id = tokenizer.encode(EOI_TOKEN, add_special_tokens=False)[0]
 
@@ -261,17 +261,8 @@ for test_file in tqdm(os.listdir(hold_out_test_path)):
             images = adapter.generate(image_embeds=output['img_gen_feat'], latent_image=source_image, num_inference_steps=50)
 
             ckpt_path = agent_model_cfg.pretrained_model_path
-            if args.setting == "in_dist":
-                save_path = os.path.join(os.path.dirname(ckpt_path), f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-in-dist', test_file.split('.')[0], 
-                                         f'{source_image_path.split("/")[-2]}_{instruction.replace(" ", "_").replace(".", "")}', source_image_path.split("/")[-1].replace('_0', '_gen'))
-            elif args.setting == "out_of_dist":
-                save_path = os.path.join(os.path.dirname(ckpt_path), f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-out-of-dist', test_file.split('.')[0], 
-                                         f'{source_image_path.split("/")[-2]}_{instruction.replace(" ", "_").replace(".", "")}', source_image_path.split("/")[-1].replace('_0', '_gen'))
-            else:
-                raise ValueError
-            
             save_path = os.path.join(os.path.dirname(ckpt_path), 
-                                     f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-{args.example_num}shot-{args.setting.replace("_", "-")}', 
+                                     f'inference-{ckpt_path.split("/")[-2].split("-")[-1]}-{args.setting.replace("_", "-")}', 
                                      test_file.split('.')[0], 
                                      f'{source_image_path.split("/")[-2]}_{instruction.replace(" ", "_").replace(".", "")}', 
                                      source_image_path.split("/")[-1].replace('_0', '_gen'))

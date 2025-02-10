@@ -121,8 +121,8 @@ adapter.init_pipe(vae=vae,
                   image_transform=image_transform,
                   dtype=dtype,
                   device=device)
-
 print('Init adapter pipe done')
+
 boi_token_id = tokenizer.encode(BOI_TOKEN, add_special_tokens=False)[0]
 eoi_token_id = tokenizer.encode(EOI_TOKEN, add_special_tokens=False)[0]
 

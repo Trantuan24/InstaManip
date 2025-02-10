@@ -1,14 +1,14 @@
 # Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation
 
-### [Project Page](https://bolinlai.github.io/) | [Paper](https://drive.google.com/file/d/1JF4sUdfFAh9ujMQ-P30eTFvejUTxkA5D/view?usp=drive_link)
+### [Project Page](https://bolinlai.github.io/projects/InstaManip/) | [Paper](https://arxiv.org/pdf/2412.01027)
 
-### Updating...
+### Actively Updating...
 
 <img src="https://bolinlai.github.io/projects/InstaManip/figures/teaser.png"/>
 
 ### TODO
 
-- [ ] Release the code for single image inference.
+- [x] Release the code for single image inference.
 - [x] Release the code for multi-shot inference.
 - [ ] Update README of training and evaluation.
 - [ ] Release model weights.
@@ -37,6 +37,7 @@ conda env create -f environment.yaml  # The env name is "instamanip"
 
 Download the dataset collected in the work [InstructPix2Pix](https://instruct-pix2pix.eecs.berkeley.edu/clip-filtered-dataset/). Unzip all the 30 zip files into the path `./data/ip2p/`.
 
+
 ### Pre-trained Checkpoints
 
 
@@ -44,6 +45,14 @@ Download the dataset collected in the work [InstructPix2Pix](https://instruct-pi
 
 
 ## Quick Start
+
+We provide a few examples in `./demo` for a quick start of our model. After setting up the environment and downloading all pre-trained checkpoints and our model weight, run the following command to edit a given image.
+
+```shell
+python src/inference/run_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin
+```
+
+You can try different examples or use your own image by updating `source_image_path`, `exemplar_source_image_path`, `exemplar_target_image_path` and `instruction` in `src/inference/run_model.py`.
 
 
 ## Training
