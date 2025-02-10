@@ -95,7 +95,6 @@ def get_metric(output):
     for key, value in output.items():
         if 'loss' in key:
             gathered_metric = torch.stack(all_gather(value)).mean()
-            # metric[key] = value.item()
             metric[key] = gathered_metric.item()
         if 'acc' in key:
             metric[key] = value.item()
@@ -191,13 +190,6 @@ def train():
     agent_model_cfg = OmegaConf.load(cfg_path.agent_model)
     agent_model = hydra.utils.instantiate(agent_model_cfg, llm=llm_model)
     logger.info('Load agent model done.')
-
-    # Freeze llm except embeddings [Remember to check] ---------------------------
-    # agent_model.requires_grad_(False)
-    # agent_model.llm.get_input_embeddings().requires_grad_(True)
-    # agent_model.llm.get_output_embeddings().requires_grad_(True)
-    # agent_model.llm.print_trainable_parameters()
-    # ---------------------------------------------------------------------------
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -303,15 +295,15 @@ def train():
                 
                 with torch.no_grad():
                     # Calculate editing similarity matrix [Remember to check] ------------------------------------------------
-                    # clip = ClipSimilarity()
-                    # edits = [item[0] for item in batch["edit"]]
-                    # edits_clip_embeds = clip.encode_text(edits)
-                    # edits_sim_matrix = edits_clip_embeds @ edits_clip_embeds.transpose(0, 1)
-                    # edits_clip_embeds=edits_clip_embeds.to(weight_dtype).to(accelerator.device),  # (B, 768)
-                    # edits_sim_matrix=edits_sim_matrix.to(weight_dtype).to(accelerator.device)  # (B, B)
+                    clip = ClipSimilarity()
+                    edits = [item[0] for item in batch["edit"]]
+                    edits_clip_embeds = clip.encode_text(edits)
+                    edits_sim_matrix = edits_clip_embeds @ edits_clip_embeds.transpose(0, 1)
+                    edits_clip_embeds=edits_clip_embeds.to(weight_dtype).to(accelerator.device),  # (B, 768)
+                    edits_sim_matrix=edits_sim_matrix.to(weight_dtype).to(accelerator.device)  # (B, B)
                     
                     # [or] Not use similarity matrix -----------------------------------------------------
-                    edits_clip_embeds = edits_sim_matrix = None
+                    # edits_clip_embeds = edits_sim_matrix = None
                     # ------------------------------------------------------------------------------------
 
                     if images is not None:

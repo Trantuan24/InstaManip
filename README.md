@@ -10,7 +10,7 @@
 
 - [x] Release the code for single image inference.
 - [x] Release the code for multi-shot inference.
-- [ ] Update README of training and evaluation.
+- [x] Update README of training and evaluation.
 - [ ] Release model weights.
 
 
@@ -39,6 +39,34 @@ Download the dataset collected in the work [InstructPix2Pix](https://instruct-pi
 
 
 ### Pre-trained Checkpoints
+
+Download the following pre-trained checkpoints and save them under `./pretrained`.
+
+- [SEED-X-17B](https://huggingface.co/AILab-CVC/SEED-X-17B/tree/main)
+- [Stable-Diffusion-XL-Base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main)
+- [Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat/tree/main)
+
+Move  `cvlm_llama2_tokenizer_100img_and_224loc_addpatch`, `seed_detokenizer` and `seed_x` from `SEED-X-17B` to `./pretrained`.
+
+Replace the `added_tokens.json` under `cvlm_llama2_tokenizer_100img_and_224loc_addpatch` with our released json file in `./pretrained`.
+
+Please run the following script to save the weights of visual encoder of `Qwen-VL-Chat` to `./pretrained/QwenViT`.
+
+```shell
+python src/tools/reload_qwen_vit.py
+```
+
+Finally, you should have the following directories under `./pretrained`. We don't need the other files.
+
+```
+./pretrained
+     |
+     |- QwenViT
+     |- cvlm_llama2_tokenizer_100img_and_224loc_addpatch
+     |- seed_detokenizer
+     |- seed_x
+     |- stable-diffusion-xl-base-1.0
+```
 
 
 ## Model Weights (Coming)
