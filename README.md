@@ -50,6 +50,10 @@ Move  `cvlm_llama2_tokenizer_100img_and_224loc_addpatch`, `seed_detokenizer` and
 
 Replace the `added_tokens.json` under `cvlm_llama2_tokenizer_100img_and_224loc_addpatch` with our released json file in `./pretrained`.
 
+```shell
+mv ./pretrained/added_tokens.json ./pretrained/cvlm_llama2_tokenizer_100img_and_224loc_addpatch/
+```
+
 Please run the following script to save the weights of visual encoder of `Qwen-VL-Chat` to `./pretrained/QwenViT`.
 
 ```shell
