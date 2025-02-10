@@ -133,13 +133,13 @@ class InstaManip(nn.Module):
                 rec_loss = cosine_loss(recon_image_embeds, target_embeds.detach())
 
             # Use relation regularization *************************************************************************
-            # layer_hidden_states = torch.stack(output_lm.hidden_states[1:], dim=0)  # (40, B, L, 5120)
-            # learned_edits_embed = layer_hidden_states[torch.stack([ids_latent_edit_mask] * 40, dim=0)]  # (40 x B x L, 5120)
-            # learned_edits_embed = learned_edits_embed.reshape((40, bz, 30, dim))  # (40, B, 30, 5120)
-            # learned_edits_embed_pooled = learned_edits_embed.mean(dim=2)  # (40, B, 5120)
-            # learned_edits_embed_pooled = learned_edits_embed_pooled / learned_edits_embed_pooled.norm(dim=2, keepdim=True)
-            # learned_edits_sim_matrix = learned_edits_embed_pooled @ learned_edits_embed_pooled.transpose(1, 2)
-            # sim_loss = F.mse_loss(learned_edits_sim_matrix, torch.stack([edits_sim_matrix] * 40, dim=0))
+            layer_hidden_states = torch.stack(output_lm.hidden_states[1:], dim=0)  # (40, B, L, 5120)
+            learned_edits_embed = layer_hidden_states[torch.stack([ids_latent_edit_mask] * 40, dim=0)]  # (40 x B x L, 5120)
+            learned_edits_embed = learned_edits_embed.reshape((40, bz, 30, dim))  # (40, B, 30, 5120)
+            learned_edits_embed_pooled = learned_edits_embed.mean(dim=2)  # (40, B, 5120)
+            learned_edits_embed_pooled = learned_edits_embed_pooled / learned_edits_embed_pooled.norm(dim=2, keepdim=True)
+            learned_edits_sim_matrix = learned_edits_embed_pooled @ learned_edits_embed_pooled.transpose(1, 2)
+            sim_loss = F.mse_loss(learned_edits_sim_matrix, torch.stack([edits_sim_matrix] * 40, dim=0))
             # *********************************************************************************************
             
         else:
@@ -149,12 +149,12 @@ class InstaManip(nn.Module):
             rec_loss = 0.0 * recon_image_embeds.sum()
 
         # Use LM loss and reconstruction loss ***********************************************************************
-        total_loss = self.lm_loss_scale * lm_loss + self.rec_loss_scale * rec_loss
-        return {'total_loss': total_loss, 'lm_loss': lm_loss, 'rec_loss': rec_loss}
+        # total_loss = self.lm_loss_scale * lm_loss + self.rec_loss_scale * rec_loss
+        # return {'total_loss': total_loss, 'lm_loss': lm_loss, 'rec_loss': rec_loss}
     
         # [or] Additionally use relation regularization [Remember to check] *************************************************************
-        # total_loss = self.lm_loss_scale * lm_loss + self.rec_loss_scale * rec_loss + self.rec_loss_scale * self.sim_loss_relative_scale * sim_loss
-        # return {'total_loss': total_loss, 'lm_loss': lm_loss, 'rec_loss': rec_loss, 'sim_loss': sim_loss}
+        total_loss = self.lm_loss_scale * lm_loss + self.rec_loss_scale * rec_loss + self.rec_loss_scale * self.sim_loss_relative_scale * sim_loss
+        return {'total_loss': total_loss, 'lm_loss': lm_loss, 'rec_loss': rec_loss, 'sim_loss': sim_loss}
         # ************************************************************************************************************
 
 
