@@ -13,7 +13,7 @@
 - [x] Release the code for single image inference.
 - [x] Release the code for multi-shot inference.
 - [x] Update README of training and evaluation.
-- [ ] Release model weights.
+- [x] Release model weights.
 
 
 ## Contents
@@ -75,8 +75,14 @@ Finally, you should have the following directories under `./pretrained`. We don'
 ```
 
 
-## Model Weights (Coming)
+## Model Weights
 
+Our model weights are available on [HuggingFace](https://huggingface.co/bolinlai/InstaManip). There are four models released in this repo.
+
+- InstaManip-17B-1shot: model trained specifically for 1-shot image manipulation.
+- InstaManip-17B-2shot: model trained specifically for 2-shot image manipulation.
+- InstaManip-17B-3shot: model trained specifically for 3-shot image manipulation.
+- InstaManip-17B-dynamic: model trained for arbitrary amount of exemplar image pairs.
 
 ## Quick Start
 
