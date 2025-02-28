@@ -1,5 +1,7 @@
 # Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation
 
+### CVPR 2025
+
 ### [Project Page](https://bolinlai.github.io/projects/InstaManip/) | [Paper](https://arxiv.org/pdf/2412.01027) | [HuggingFace](https://huggingface.co/bolinlai/InstaManip)
 
 #### [Bolin Lai](https://bolinlai.github.io/), [Felix Juefei-Xu](https://xujuefei.com/), [Miao Liu](https://aptx4869lm.github.io/), [Xiaoliang Dai](https://sites.google.com/view/xiaoliangdai/), [Nikhil Mehta](https://hockeybro12.github.io/), [Chenguang Zhu](https://cs.stanford.edu/~cgzhu/), [Zeyi Huang](https://oodbag.github.io/), [James M. Rehg](https://rehg.org/), [Sangmin Lee](https://sites.google.com/view/sangmin-lee), [Ning Zhang](https://n-zhang.github.io/), [Tong Xiao](http://xiaotong.me/)
@@ -10,10 +12,7 @@
 
 ### TODO
 
-- [x] Release the code for single image inference.
-- [x] Release the code for multi-shot inference.
-- [x] Update README of training and evaluation.
-- [x] Release model weights.
+- [ ] Release the quick start code for multi-shot inference.
 
 
 ## Contents
