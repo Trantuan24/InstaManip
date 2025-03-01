@@ -10,10 +10,6 @@
 
 <img src="https://bolinlai.github.io/projects/InstaManip/figures/teaser.png"/>
 
-### TODO
-
-- [ ] Release the quick start code for multi-shot inference.
-
 
 ## Contents
 
@@ -88,10 +84,14 @@ Our model weights are available on [HuggingFace](https://huggingface.co/bolinlai
 We provide a few examples in `./demo` for a quick start of our model. After setting up the environment and downloading all pre-trained checkpoints and our model weight, run the following command to edit a given image.
 
 ```shell
+# 1-shot
 python src/inference/run_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin
+
+# multi-shot
+python src/inference/run_model_multishot.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin
 ```
 
-You can try different examples or use your own image by updating `source_image_path`, `exemplar_source_image_path`, `exemplar_target_image_path` and `instruction` in `src/inference/run_model.py`.
+You can try different examples or use your own image by updating `source_image_path`, `exemplar_source_image_path`, `exemplar_target_image_path` and `instruction` in `src/inference/run_model.py` and `src/inference/run_model_multishot.py`.
 
 
 ## Training
@@ -164,3 +164,5 @@ If you find our paper helpful to your work, please cite with this BibTex.
 
 
 ## Acknowledgement
+
+Our work was developed based on [SEED-X](https://github.com/AILab-CVC/SEED-X). We appreciate the contributors for their awesome codebase.

@@ -294,17 +294,12 @@ def train():
                         images = None
                 
                 with torch.no_grad():
-                    # Calculate editing similarity matrix [Remember to check] ------------------------------------------------
                     clip = ClipSimilarity()
                     edits = [item[0] for item in batch["edit"]]
                     edits_clip_embeds = clip.encode_text(edits)
                     edits_sim_matrix = edits_clip_embeds @ edits_clip_embeds.transpose(0, 1)
                     edits_clip_embeds=edits_clip_embeds.to(weight_dtype).to(accelerator.device),  # (B, 768)
                     edits_sim_matrix=edits_sim_matrix.to(weight_dtype).to(accelerator.device)  # (B, B)
-                    
-                    # [or] Not use similarity matrix -----------------------------------------------------
-                    # edits_clip_embeds = edits_sim_matrix = None
-                    # ------------------------------------------------------------------------------------
 
                     if images is not None:
                         image_embeds = visual_encoder(images, batch['patch_position'].to(accelerator.device) if 'patch_position' in batch else None)

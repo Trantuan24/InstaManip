@@ -120,43 +120,37 @@ eoe_token_id = tokenizer.encode(EOE_TOKEN, add_special_tokens=False)[0]  # 32331
 # Examples for a quick start -----------------------------------
 source_image_path = "./demo/source_1.jpg"
 instruction = "Make the person a toddler"
-exemplar_source_image_path = "./demo/exemplar_source_1.jpg"
-exemplar_target_image_path = "./demo/exemplar_target_1.jpg"
-
-# source_image_path = "./demo/source_1.jpg"
-# instruction = "Make it a tropical landscape"
-# exemplar_source_image_path = "./demo/exemplar_source_2.jpg"
-# exemplar_target_image_path = "./demo/exemplar_target_2.jpg"
-
-# source_image_path = "./demo/source_1.jpg"
-# instruction = "Make it sepia toned"
-# exemplar_source_image_path = "./demo/exemplar_source_3.jpg"
-# exemplar_target_image_path = "./demo/exemplar_target_3.jpg"
-
-# source_image_path = "./demo/source_1.jpg"
-# instruction = "Have him be the joker"
-# exemplar_source_image_path = "./demo/exemplar_source_4.jpg"
-# exemplar_target_image_path = "./demo/exemplar_target_4.jpg"
-
-# source_image_path = "./demo/source_1.jpg"
-# instruction = "Make him wear a plaid clothing"
-# exemplar_source_image_path = "./demo/exemplar_source_5.jpg"
-# exemplar_target_image_path = "./demo/exemplar_target_5.jpg"
+exemplar_source_image_paths = ["./demo/multishot/exemplar_source_multi_1.jpg",
+                               "./demo/multishot/exemplar_source_multi_2.jpg",
+                               "./demo/multishot/exemplar_source_multi_3.jpg"]  # exemplar source images
+exemplar_target_image_paths = ["./demo/multishot/exemplar_target_multi_1.jpg",
+                               "./demo/multishot/exemplar_target_multi_2.jpg",
+                               "./demo/multishot/exemplar_target_multi_3.jpg"]  # exemplar target images (corresponding to exemplar source)
+assert len(exemplar_source_image_paths) == len(exemplar_target_image_paths), "Numbers of exemplar source and exemplar target are not matched."
 # --------------------------------------------------------------
 
 image = Image.open(source_image_path).convert('RGB')
 source_image = image.resize(generated_resolution)
-exemplar_source_image = Image.open(exemplar_source_image_path).convert('RGB')
-exemplar_source_image = exemplar_source_image.resize(generated_resolution)
-exemplar_target_image = Image.open(exemplar_target_image_path).convert('RGB')
-exemplar_target_image = exemplar_target_image.resize(generated_resolution)
-
 image_tensor = image_transform(image).unsqueeze(0)
 embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
-exemplar_source_image_tensor = image_transform(exemplar_source_image).unsqueeze(0)
-exemplar_source_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
-exemplar_target_image_tensor = image_transform(exemplar_target_image).unsqueeze(0)
-exemplar_target_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+
+exemplar_source_image_tensors, exemplar_target_image_tensors = list(), list()
+exemplar_source_embeds_cmp_masks, exemplar_target_embeds_cmp_masks = list(), list()
+for i in range(len(exemplar_source_image_paths)):
+    exemplar_source_image = Image.open(exemplar_source_image_paths[i]).convert('RGB')
+    exemplar_source_image = exemplar_source_image.resize(generated_resolution)
+    exemplar_source_image_tensor = image_transform(exemplar_source_image).unsqueeze(0)
+    exemplar_source_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+
+    exemplar_target_image = Image.open(exemplar_target_image_paths[i]).convert('RGB')
+    exemplar_target_image = exemplar_target_image.resize(generated_resolution)
+    exemplar_target_image_tensor = image_transform(exemplar_target_image).unsqueeze(0)
+    exemplar_target_embeds_cmp_mask = torch.tensor([True]).to(device, dtype=torch.bool)
+    
+    exemplar_source_image_tensors.append(exemplar_source_image_tensor)
+    exemplar_source_embeds_cmp_masks.append(exemplar_source_embeds_cmp_mask)
+    exemplar_target_image_tensors.append(exemplar_target_image_tensor)
+    exemplar_target_embeds_cmp_masks.append(exemplar_target_embeds_cmp_mask)
 
 image_tokens = ''
 image_tokens += BOI_TOKEN + ''.join([IMG_TOKEN.format(int(item)) for item in range(num_img_in_tokens)]) + EOI_TOKEN
@@ -168,13 +162,15 @@ exemplar_target_image_tokens += BOI_TOKEN + ''.join(IMG_TOKEN.format(int(item)) 
 patch_position = exemplar_source_patch_position = exemplar_target_patch_position = None
 
 image_tensor = image_tensor.to(device, dtype=dtype)
-exemplar_source_image_tensor = exemplar_source_image_tensor.to(device, dtype=dtype)
-exemplar_target_image_tensor = exemplar_target_image_tensor.to(device, dtype=dtype)
+for i in range(len(exemplar_source_image_tensors)):
+    exemplar_source_image_tensors[i] = exemplar_source_image_tensors[i].to(device, dtype=dtype)
+    exemplar_target_image_tensors[i] = exemplar_target_image_tensors[i].to(device, dtype=dtype)
 
 quoted_instruction = f'"{instruction}"'
 latent_edit_tokens = BOE_TOKEN + ''.join([EDIT_TOKEN.format(int(item)) for item in range(num_latent_edit_tokens)]) + EOE_TOKEN
-icl_instruction = f'Here is an image manipulation instruction {quoted_instruction}, which can edit source image {exemplar_source_image_tokens} to target image {exemplar_target_image_tokens}. The editing is embedded in {latent_edit_tokens}. Learn from the instruction with the exemplar pairs and apply the same manipulation to this image {image_tokens}.'
-prompt = instruction_prompt.format_map({'instruction': icl_instruction})
+snippet = f" source image {exemplar_source_image_tokens} to target image {exemplar_target_image_tokens}" * len(exemplar_source_image_paths)
+icl_instruction = f"Here is an image manipulation instruction {quoted_instruction}, which can edit{snippet}. The editing is embedded in {latent_edit_tokens}. Learn from the instruction with the exemplar pairs and apply the same manipulation to this image {image_tokens}."
+prompt = instruction_prompt.format_map({"instruction": icl_instruction})
 
 input_ids = tokenizer.encode(prompt, add_special_tokens=False)
 input_ids = [tokenizer.bos_token_id] + input_ids
@@ -202,7 +198,7 @@ for boi_idx, eoi_idx in zip(boi_indices[1:-1:2], eoi_indices[1:-1:2]):
 boe_indices = torch.where(input_ids == boe_token_id)[0].tolist()
 eoe_indices = torch.where(input_ids == eoe_token_id)[0].tolist()
 for boe_idx, eoe_idx in zip(boe_indices, eoe_indices):
-    ids_latent_edit_mask[boe_idx + 1:eoe_idx] = True
+    ids_latent_edit_mask[boe_idx+1:eoe_idx] = True
     last_exemplar_target_eoi = eoi_indices[1:-1:2][-1]
     scope_mask[eoe_idx+1:, :last_exemplar_target_eoi+1] = -float('inf')
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -216,26 +212,26 @@ scope_mask = scope_mask.unsqueeze(0)
 
 with torch.no_grad():
     image_embeds = visual_encoder(image_tensor)
-    exemplar_source_image_embeds = visual_encoder(exemplar_source_image_tensor)
-    exemplar_target_image_embeds = visual_encoder(exemplar_target_image_tensor)
+    exemplar_source_image_embeds = visual_encoder(torch.cat(exemplar_source_image_tensors, dim=0))
+    exemplar_target_image_embeds = visual_encoder(torch.cat(exemplar_target_image_tensors, dim=0))
     output = agent_model.generate(tokenizer=tokenizer,
                                   input_ids=input_ids,
                                   image_embeds={'new': image_embeds, 'exemplar_source': exemplar_source_image_embeds, 'exemplar_target': exemplar_target_image_embeds},
-                                  embeds_cmp_mask={'new': embeds_cmp_mask, 'exemplar_source': exemplar_source_embeds_cmp_mask, 'exemplar_target': exemplar_target_embeds_cmp_mask},
+                                  embeds_cmp_mask={'new': embeds_cmp_mask, 'exemplar_source': exemplar_source_embeds_cmp_masks, 'exemplar_target': exemplar_target_embeds_cmp_masks},
                                   patch_positions=None if patch_position is None else {'new': patch_position, 'exemplar_source': exemplar_source_patch_position, 'exemplar_target': exemplar_target_patch_position},
                                   ids_cmp_mask=ids_cmp_mask,
                                   ids_exemplar_source_mask=ids_exemplar_source_mask,
                                   ids_exemplar_target_mask=ids_exemplar_target_mask,
                                   ids_latent_edit_mask=ids_latent_edit_mask,
                                   scope_mask=scope_mask,
-                                  max_new_tokens=500,
+                                  max_new_tokens=450 + 100 * len(exemplar_source_image_paths),
                                   num_img_gen_tokens=num_img_out_tokens)
 text = re.sub('<[^>]*>', '', output['text'])
 print(text)
 
 if output['has_img_output']:
     images = adapter.generate(image_embeds=output['img_gen_feat'], latent_image=source_image, num_inference_steps=50)
-    save_path = f"./demo/output/{os.path.basename(source_image_path).split('.')[0]}/{instruction.replace(' ', '_')}_by_{os.path.basename(exemplar_source_image_path).replace('source', 'pair')}"
+    save_path = f"./demo/output/{os.path.basename(source_image_path).split('.')[0]}/{instruction.replace(' ', '_')}_by_{len(exemplar_source_image_paths)}shot.jpg"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     images[0].save(save_path)
 
