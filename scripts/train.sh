@@ -15,7 +15,6 @@ torchrun --nproc_per_node=8 --nnodes=1 \
     --output_dir ${OUTPUT_PATH} \
     --expr_name ${exp_name} \
     --learning_rate 1e-4 \
-    --batch_size 1 \
     --weight_decay 0.05 \
     --adam_beta1 0.9 \
     --adam_beta2 0.98 \

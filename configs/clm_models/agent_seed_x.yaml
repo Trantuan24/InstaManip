@@ -19,6 +19,6 @@ mse: True
 
 lm_loss_scale: 1.0
 rec_loss_scale: 6.0
-sim_loss_relative_scale: 1.0  # The scale relateive to rec_loss_scale. Final scale will be rec_loss_scale * sim_loss_relative_scale
+relation_reg_relative_scale: 0.1  # The scale relateive to rec_loss_scale. Final scale will be rec_loss_scale * relation_reg_relative_scale
 
 pretrained_model_path: pretrained/seed_x/agent/pytorch_model.bin

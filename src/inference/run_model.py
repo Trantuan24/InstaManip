@@ -181,9 +181,7 @@ input_ids = [tokenizer.bos_token_id] + input_ids
 input_ids = torch.tensor(input_ids).to(device, dtype=torch.long)
 
 ids_cmp_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
-ids_exemplar_source_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
 ids_exemplar_target_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
-ids_latent_edit_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
 scope_mask = xops.LowerTriangularMask().materialize(shape=(input_ids.shape[0], input_ids.shape[0]), dtype=dtype, device=device)
 
 boi_indices = torch.where(input_ids == boi_token_id)[0].tolist()
@@ -192,9 +190,6 @@ eoi_indices = torch.where(input_ids == eoi_token_id)[0].tolist()
 for boi_idx, eoi_idx in zip(boi_indices, eoi_indices):
     ids_cmp_mask[boi_idx+1:eoi_idx] = True
 
-for boi_idx, eoi_idx in zip(boi_indices[:-1:2], eoi_indices[:-1:2]):
-    ids_exemplar_source_mask[boi_idx+1:eoi_idx] = True
-
 for boi_idx, eoi_idx in zip(boi_indices[1:-1:2], eoi_indices[1:-1:2]):
     ids_exemplar_target_mask[boi_idx+1:eoi_idx] = True
 
@@ -202,16 +197,13 @@ for boi_idx, eoi_idx in zip(boi_indices[1:-1:2], eoi_indices[1:-1:2]):
 boe_indices = torch.where(input_ids == boe_token_id)[0].tolist()
 eoe_indices = torch.where(input_ids == eoe_token_id)[0].tolist()
 for boe_idx, eoe_idx in zip(boe_indices, eoe_indices):
-    ids_latent_edit_mask[boe_idx + 1:eoe_idx] = True
     last_exemplar_target_eoi = eoi_indices[1:-1:2][-1]
     scope_mask[eoe_idx+1:, :last_exemplar_target_eoi+1] = -float('inf')
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 input_ids = input_ids.unsqueeze(0)
 ids_cmp_mask = ids_cmp_mask.unsqueeze(0)
-ids_exemplar_source_mask = ids_exemplar_source_mask.unsqueeze(0)
 ids_exemplar_target_mask = ids_exemplar_target_mask.unsqueeze(0)
-ids_latent_edit_mask = ids_latent_edit_mask.unsqueeze(0)
 scope_mask = scope_mask.unsqueeze(0)
 
 with torch.no_grad():
@@ -224,9 +216,7 @@ with torch.no_grad():
                                   embeds_cmp_mask={'new': embeds_cmp_mask, 'exemplar_source': exemplar_source_embeds_cmp_mask, 'exemplar_target': exemplar_target_embeds_cmp_mask},
                                   patch_positions=None if patch_position is None else {'new': patch_position, 'exemplar_source': exemplar_source_patch_position, 'exemplar_target': exemplar_target_patch_position},
                                   ids_cmp_mask=ids_cmp_mask,
-                                  ids_exemplar_source_mask=ids_exemplar_source_mask,
                                   ids_exemplar_target_mask=ids_exemplar_target_mask,
-                                  ids_latent_edit_mask=ids_latent_edit_mask,
                                   scope_mask=scope_mask,
                                   max_new_tokens=500,
                                   num_img_gen_tokens=num_img_out_tokens)

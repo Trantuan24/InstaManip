@@ -6,7 +6,6 @@
 
 #### [Bolin Lai](https://bolinlai.github.io/), [Felix Juefei-Xu](https://xujuefei.com/), [Miao Liu](https://aptx4869lm.github.io/), [Xiaoliang Dai](https://sites.google.com/view/xiaoliangdai/), [Nikhil Mehta](https://hockeybro12.github.io/), [Chenguang Zhu](https://cs.stanford.edu/~cgzhu/), [Zeyi Huang](https://oodbag.github.io/), [James M. Rehg](https://rehg.org/), [Sangmin Lee](https://sites.google.com/view/sangmin-lee), [Ning Zhang](https://n-zhang.github.io/), [Tong Xiao](http://xiaotong.me/)
 
-### Actively Updating...
 
 <img src="https://bolinlai.github.io/projects/InstaManip/figures/teaser.png"/>
 
@@ -101,6 +100,10 @@ Run the following command to train the model on 8 GPUs. You can change the numbe
 ```shell
 bash scripts/train.sh
 ```
+
+You can use different hyperparameters in `scripts/train.sh` (e.g., learning rate, iterateions) and `configs/data/dataset.yaml` (e.g., batch size, number of exemplar images).
+
+We also enable `torch.multiprocessing.set_start_method("spawn")` in `scripts/train.sh` for training on H100. If you run the code on A100, this line can be commented out for faster training.
 
 
 ## Evaluation

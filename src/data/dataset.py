@@ -54,7 +54,6 @@ gen_prompt_response = [
 
 
 def build_multi_datapipes(datapipes, tokenizer=None, image_transform=None, sample_weights=None):
-    # assert concat_type in ['concat', 'mux_longest', 'sample']
     if sample_weights is None:
         sample_weights = [1] * len(datapipes)
     else:
@@ -95,9 +94,7 @@ def decode_in_context_learning_data(item,
                                     num_img_out_tokens=64,
                                     num_latent_edit_tokens=30,
                                     num_exemplar_pair=1,
-                                    dynamic_exemplar_num=False,
-                                    base_resolution=224,
-                                    grid_pinpoints=None):
+                                    dynamic_exemplar_num=False):
     key, value = item
     if 'source_image' not in value or 'target_image' not in value or 'instruction' not in value:
         return {}
@@ -112,10 +109,11 @@ def decode_in_context_learning_data(item,
     group_id = source_image_path.split('/')[-2]
     image_id = source_image_path.split('/')[-1].split('_')[0]
     exemplar_candidates = [item for item in data_group[group_id] if item != image_id]
+    max_num_exemplar_pair = num_exemplar_pair  # maximal example number for dynamic shot
     if len(exemplar_candidates) > 0:
         if dynamic_exemplar_num:
             num_exemplar_pair = random.choice(list(range(1, num_exemplar_pair+1)))
-        assert num_exemplar_pair > 0, "You need to set a positive number of exemplar pairs."
+
         if num_exemplar_pair == 1:
             exemplar_image_id = random.choice(exemplar_candidates)
             exemplar_source_image_path = os.path.join(image_dir, group_id, f'{exemplar_image_id}_0.jpg')
@@ -135,7 +133,7 @@ def decode_in_context_learning_data(item,
                 exemplar_images.append(Image.open(exemplar_source_image_path).convert('RGB'))
                 exemplar_images.append(Image.open(exemplar_target_image_path).convert('RGB'))
                 have_exemplar_images = True
-    else:  # don't use icl if there's only one image in the group
+    else:  # don't use in-context learning if there's only one image in the group
         have_exemplar_images = False
         return {}
 
@@ -158,8 +156,9 @@ def decode_in_context_learning_data(item,
     if image_transform is not None:
         images = [image_transform(image) for image in images]
         images = torch.stack(images, dim=0)
-        if dynamic_exemplar_num and images.shape[0] < 8:
-            placeholder = torch.zeros(size=(8-images.shape[0], images.shape[1], images.shape[2], images.shape[3]), dtype=images.dtype, device=images.device)
+        expected_num_images = max_num_exemplar_pair * 2 + 2  # num_exemplar_pair * 2 + source + target
+        if dynamic_exemplar_num and images.shape[0] < expected_num_images:  # fill with black image placeholders for batch training
+            placeholder = torch.zeros(size=(expected_num_images - images.shape[0], images.shape[1], images.shape[2], images.shape[3]), dtype=images.dtype, device=images.device)
             images = torch.concat([images, placeholder], dim=0)
 
         image_tokens = ''
@@ -177,15 +176,15 @@ def decode_in_context_learning_data(item,
             embeds_cmp_mask = [True, True] * num_exemplar_pair + embeds_cmp_mask
             embeds_gen_mask = [False, False] * num_exemplar_pair + embeds_gen_mask
 
-            if dynamic_exemplar_num and len(embeds_cmp_mask) < 8:
-                embeds_cmp_mask = embeds_cmp_mask + [False] * (8 - len(embeds_cmp_mask))
-                embeds_gen_mask = embeds_gen_mask + [False] * (8 - len(embeds_gen_mask))
+            if dynamic_exemplar_num and len(embeds_cmp_mask) < expected_num_images:
+                embeds_cmp_mask = embeds_cmp_mask + [False] * (expected_num_images - len(embeds_cmp_mask))
+                embeds_gen_mask = embeds_gen_mask + [False] * (expected_num_images - len(embeds_gen_mask))
 
     input_ids = []
     labels = []
     input_text = ''
 
-    if system_message != '':  # False
+    if system_message != '':
         if not system_message.endswith('\n'):
             system_message += '\n'
         input_text += system_message
@@ -249,7 +248,6 @@ def decode_in_context_learning_data(item,
     eoi_token_id = tokenizer.encode(EOI_TOKEN, add_special_tokens=False)[0]  # 32101
     ids_cmp_mask = [False] * len(input_ids)
     ids_gen_mask = [False] * len(input_ids)
-    ids_exemplar_source_mask = [False] * len(input_ids)
     ids_exemplar_target_mask = [False] * len(input_ids)
 
     # Use manipulation tokens =====================================================================
@@ -268,7 +266,6 @@ def decode_in_context_learning_data(item,
         labels = labels + [-100] * padding_length
         ids_cmp_mask = ids_cmp_mask + [False] * padding_length
         ids_gen_mask = ids_gen_mask + [False] * padding_length
-        ids_exemplar_source_mask = ids_exemplar_source_mask + [False] * padding_length
         ids_exemplar_target_mask = ids_exemplar_target_mask + [False] * padding_length
         ids_latent_edit_mask = ids_latent_edit_mask + [False] * padding_length
 
@@ -277,7 +274,6 @@ def decode_in_context_learning_data(item,
     labels = torch.tensor(labels, dtype=torch.long)
     ids_cmp_mask = torch.tensor(ids_cmp_mask, dtype=torch.bool)
     ids_gen_mask = torch.tensor(ids_gen_mask, dtype=torch.bool)
-    ids_exemplar_source_mask = torch.tensor(ids_exemplar_source_mask, dtype=torch.bool)
     ids_exemplar_target_mask = torch.tensor(ids_exemplar_target_mask, dtype=torch.bool)
     ids_latent_edit_mask = torch.tensor(ids_latent_edit_mask, dtype=torch.bool)
     embeds_cmp_mask = torch.tensor(embeds_cmp_mask) if embeds_cmp_mask is not None else None
@@ -290,9 +286,6 @@ def decode_in_context_learning_data(item,
     for boi_idx, eoi_idx in zip(boi_indices[:-1], eoi_indices[:-1]):
         ids_cmp_mask[boi_idx+1:eoi_idx] = True
     ids_gen_mask[boi_indices[-1]+1:eoi_indices[-1]] = True
-
-    for boi_idx, eoi_idx in zip(boi_indices[:-2:2], eoi_indices[:-2:2]):
-        ids_exemplar_source_mask[boi_idx+1:eoi_idx] = True
 
     for boi_idx, eoi_idx in zip(boi_indices[1:-2:2], eoi_indices[1:-2:2]):
         ids_exemplar_target_mask[boi_idx+1:eoi_idx] = True
@@ -317,7 +310,6 @@ def decode_in_context_learning_data(item,
         'labels': labels,
         'ids_gen_mask': ids_gen_mask,
         'ids_cmp_mask': ids_cmp_mask,
-        'ids_exemplar_source_mask': ids_exemplar_source_mask,
         'ids_exemplar_target_mask': ids_exemplar_target_mask,
         'ids_latent_edit_mask': ids_latent_edit_mask,
         'embeds_gen_mask': embeds_gen_mask,
@@ -369,14 +361,25 @@ def build_in_context_learning_datapipes(data_dir,
                                         num_exemplar_pair=1,
                                         dynamic_exemplar_num=False,
                                         cycle_count=None,
-                                        base_resolution=224,
                                         dataset_name=None):
     """
-    Datapipe of ICL dataset (such as CC3M, LAION...) with webdataset format
+    Datapipe of ICL dataset (such as InstructPix2Pix) with webdataset format
     """
 
     with open(data_group_path, 'r') as infile:
         data_group = json.load(infile)
+
+    # Adujst max_length and batch_size adaptively (for 80G GPU memory) ----------------------
+    assert num_exemplar_pair > 0, "You need to set a positive number of exemplar pairs."
+    if num_exemplar_pair == 1:
+        pass
+    elif num_exemplar_pair == 2:
+        batch_size = 40
+        max_length = 650
+    else:
+        batch_size = 40 - (num_exemplar_pair - 2) * 5
+        max_length = 650 + (num_exemplar_pair - 2) * 100
+    # ---------------------------------------------------------------------------------------
 
     decode_partial = functools.partial(decode_in_context_learning_data,
                                        image_dir=image_dir,
@@ -394,9 +397,7 @@ def build_in_context_learning_datapipes(data_dir,
                                        num_img_out_tokens=num_img_out_tokens,
                                        num_latent_edit_tokens=num_latent_edit_tokens,
                                        num_exemplar_pair=num_exemplar_pair,
-                                       dynamic_exemplar_num=dynamic_exemplar_num,
-                                       base_resolution=base_resolution,
-                                       grid_pinpoints=[])
+                                       dynamic_exemplar_num=dynamic_exemplar_num)
 
     filter_partial = functools.partial(filter_data_with_image_ids)
 

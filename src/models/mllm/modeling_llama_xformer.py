@@ -150,22 +150,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-# Added by Bolin
-def plain_attention(query, key, value, attn_bias, p=0.0):
-    scale = 1 / query.shape[-1] ** 0.5
-    query = query * scale
-    query = query.transpose(1, 2)
-    key = key.transpose(1, 2)
-    value = value.transpose(1, 2)
-    attn = query @ key.transpose(-2, -1)
-    if attn_bias is not None:
-        attn = attn + attn_bias
-    attn = attn.softmax(-1)
-    attn = F.dropout(attn, p)
-    attn = attn @ value
-    return attn.transpose(1, 2)
-
-
 class LlamaMLP(nn.Module):
 
     def __init__(
@@ -210,22 +194,16 @@ class LlamaAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        ids_exemplar_source_mask: Optional[torch.BoolTensor] = None,
         ids_exemplar_target_mask: Optional[torch.BoolTensor] = None,
-        ids_gen_mask: Optional[torch.BoolTensor] = None,
-        ids_latent_edit_mask: Optional[torch.BoolTensor] = None,
         scope_mask: Optional[torch.Tensor] = None,
-        image_token_generation: Optional[bool] = False,
-        boi_index: Optional[int] = 0,
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)  # shape: (B, 40, L, 128)
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
@@ -233,30 +211,17 @@ class LlamaAttention(nn.Module):
         if past_key_value is not None:  # training: False, inference: True
             kv_seq_len += past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)  # [bsz, nh, t, hd]
-        past_query_states = query_states
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:  # training: False, inference: True
-            # reuse k, v, self_attention
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
-            # Reuse query_states ================================================
-            past_query_states = torch.cat([past_key_value[2], past_query_states], dim=2)
-            # ===================================================================
 
-        # No reuse of query states +++++++++++++++++++++++++++++++++++++++++++++++
-        # past_key_value = (key_states, value_states) if use_cache else None
-        # [or] Reuse query states ++++++++++++++++++++++++++++++++++++++++++++++++
-        if self.training:
-            past_key_value = (key_states, value_states) if use_cache else None
-        else:
-            past_key_value = (key_states, value_states, past_query_states) if use_cache else None
-        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        past_key_value = (key_states, value_states) if use_cache else None
         
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        past_query_states = past_query_states.transpose(1, 2)
 
         if self.training:
             attn_output = self.group_self_attention(
@@ -265,10 +230,7 @@ class LlamaAttention(nn.Module):
                 value_states,
                 attn_bias=None,
                 training=True,
-                ids_exemplar_source_mask=ids_exemplar_source_mask,
                 ids_exemplar_target_mask=ids_exemplar_target_mask,
-                ids_gen_mask=ids_gen_mask,
-                ids_latent_edit_mask=ids_latent_edit_mask,
                 scope_mask=scope_mask
             )
         else:
@@ -278,14 +240,8 @@ class LlamaAttention(nn.Module):
                 value_states,
                 attn_bias=None,
                 training=False,
-                ids_exemplar_source_mask=ids_exemplar_source_mask,
                 ids_exemplar_target_mask=ids_exemplar_target_mask,
-                ids_gen_mask=ids_gen_mask,
-                ids_latent_edit_mask=ids_latent_edit_mask,
                 scope_mask=scope_mask,
-                image_token_generation=image_token_generation,
-                boi_index=boi_index,
-                past_query_states=past_query_states
             )
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
@@ -295,9 +251,7 @@ class LlamaAttention(nn.Module):
 
         return attn_output, attn_weights, past_key_value
 
-    # Added by Bolin
-    def group_self_attention(self, query, key, value, attn_bias, p=0.0, training=True, ids_exemplar_source_mask=None, ids_exemplar_target_mask=None,
-                             ids_gen_mask=None, ids_latent_edit_mask=None, scope_mask=None, image_token_generation=False, boi_index=0, past_query_states=None):
+    def group_self_attention(self, query, key, value, attn_bias, p=0.0, training=True, ids_exemplar_target_mask=None, scope_mask=None):
         scale = 1 / query.shape[-1] ** 0.5
         query = query * scale
         query = query.transpose(1, 2)
@@ -313,10 +267,10 @@ class LlamaAttention(nn.Module):
                 scope_mask = torch.stack([scope_mask] * attn.shape[1], dim=1)
                 attn = attn + scope_mask
             else:
-                if attn.shape[-2] == scope_mask.shape[-2]:  # generating the first token
+                if attn.shape[-2] == scope_mask.shape[-2]:  # generate the first token
                     scope_mask = torch.stack([scope_mask] * attn.shape[1], dim=1)
                     attn = attn + scope_mask
-                else:  # generating the second tokens and more, using new scope_mask
+                else:  # generate the second tokens onwards, using new scope_mask
                     scope_mask = torch.zeros_like(attn)
                     last_exemplar_target_eoi = int(torch.where(ids_exemplar_target_mask==True)[1][-1]) + 1
                     scope_mask[:, :, :, :last_exemplar_target_eoi+1] = -float("inf")
@@ -346,16 +300,10 @@ class LlamaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        ids_exemplar_source_mask: Optional[torch.BoolTensor] = None,
         ids_exemplar_target_mask: Optional[torch.BoolTensor] = None,
-        ids_gen_mask: Optional[torch.BoolTensor] = None,
-        ids_latent_edit_mask: Optional[torch.BoolTensor] = None,
         scope_mask: Optional[torch.Tensor] = None,
-        image_token_generation: Optional[bool] = False,
-        boi_index: Optional[int] = 0,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -380,16 +328,10 @@ class LlamaDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
-            attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
-            ids_exemplar_source_mask=ids_exemplar_source_mask,
             ids_exemplar_target_mask=ids_exemplar_target_mask,
-            ids_gen_mask=ids_gen_mask,
-            ids_latent_edit_mask=ids_latent_edit_mask,
             scope_mask=scope_mask,
-            image_token_generation=image_token_generation,
-            boi_index=boi_index,
             output_attentions=output_attentions,
             use_cache=use_cache,
         )
@@ -566,8 +508,7 @@ class LlamaModel(LlamaPreTrainedModel):
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype,
-                                              tgt_len=input_shape[-1]).to(inputs_embeds.device)
+            expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]).to(inputs_embeds.device)
             combined_attention_mask = expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
 
         return combined_attention_mask
@@ -580,13 +521,8 @@ class LlamaModel(LlamaPreTrainedModel):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        ids_exemplar_source_mask: Optional[torch.BoolTensor] = None,  # added by Bolin
-        ids_exemplar_target_mask: Optional[torch.BoolTensor] = None,  # added by Bolin
-        ids_gen_mask: Optional[torch.BoolTensor] = None,  # added by Bolin
-        ids_latent_edit_mask: Optional[torch.BoolTensor] = None,  # added by Bolin
-        scope_mask: Optional[torch.Tensor] = None,  # added by Bolin
-        image_token_generation: Optional[bool] = False,  # added by Bolin
-        boi_index: Optional[int] = 0,  # added by Bolin
+        ids_exemplar_target_mask: Optional[torch.BoolTensor] = None,
+        scope_mask: Optional[torch.Tensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -598,10 +534,6 @@ class LlamaModel(LlamaPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
-        # if input_ids is not None and inputs_embeds is not None:
-        #     raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        # elif input_ids is not None:
         if input_ids is not None:
             batch_size, seq_length = input_ids.shape
         elif inputs_embeds is not None:
@@ -612,11 +544,11 @@ class LlamaModel(LlamaPreTrainedModel):
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
-        if past_key_values is not None:  # False
+        if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        if position_ids is None:  # True
+        if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
                 past_key_values_length,
@@ -628,10 +560,10 @@ class LlamaModel(LlamaPreTrainedModel):
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
-        if inputs_embeds is None:  # False
+        if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
         # embed positions
-        if attention_mask is None:  # False
+        if attention_mask is None:
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past),
                 dtype=torch.bool,
@@ -647,7 +579,7 @@ class LlamaModel(LlamaPreTrainedModel):
         hidden_states = inputs_embeds
 
         if self.gradient_checkpointing and self.training:
-            if use_cache:  # False
+            if use_cache:
                 logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
                 use_cache = False
 
@@ -674,27 +606,18 @@ class LlamaModel(LlamaPreTrainedModel):
                 layer_outputs = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(decoder_layer),
                     hidden_states,
-                    attention_mask,
                     position_ids,
                     None,  # for past_key_values
-                    ids_exemplar_source_mask,
                     ids_exemplar_target_mask,
-                    ids_gen_mask,
-                    ids_latent_edit_mask,
                     scope_mask
                 )
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attention_mask,
                     position_ids=position_ids,
                     past_key_value=past_key_value,
-                    ids_exemplar_source_mask=ids_exemplar_source_mask,
                     ids_exemplar_target_mask=ids_exemplar_target_mask,
-                    ids_latent_edit_mask=ids_latent_edit_mask,
                     scope_mask=scope_mask,
-                    image_token_generation=image_token_generation,
-                    boi_index=boi_index,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
@@ -729,13 +652,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.model = LlamaModel(config)
-
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # For inference only -------------------------
-        self.image_token_generation = False
-        self.boi_index = 0
-        # --------------------------------------------
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -768,13 +685,8 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
-        ids_exemplar_source_mask: Optional[torch.BoolTensor] = None,
         ids_exemplar_target_mask: Optional[torch.BoolTensor] = None,
-        ids_gen_mask: Optional[torch.BoolTensor] = None,
-        ids_latent_edit_mask: Optional[torch.BoolTensor] = None,
         scope_mask: Optional[torch.Tensor] = None,
-        boi_token_id: Optional[int] = None,
-        eoi_token_id: Optional[int] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -810,33 +722,19 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if not self.training and boi_token_id is not None and eoi_token_id is not None:  # flip self.image_token_generation every time it meets boi or eoi
-            if int(input_ids[0, -1]) == boi_token_id:
-                self.image_token_generation = True
-                self.boi_index = past_key_values[0][0].shape[2] if past_key_values is not None else input_ids.shape[1]
-            
-            if int(input_ids[0, -1]) == eoi_token_id:
-                self.image_token_generation = False
-
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
-            ids_exemplar_source_mask=ids_exemplar_source_mask,
             ids_exemplar_target_mask=ids_exemplar_target_mask,
-            ids_gen_mask=ids_gen_mask,
-            ids_latent_edit_mask=ids_latent_edit_mask,
             scope_mask=scope_mask,
-            image_token_generation=self.image_token_generation,
-            boi_index=self.boi_index,
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        # ----------------------------------------------------------------------------
 
         hidden_states = outputs[0]  # outputs.keys = odict_keys(['last_hidden_state', 'hidden_states'])
         
@@ -917,12 +815,8 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
             "past_key_values": past_key_values,
             "use_cache": kwargs.get("use_cache"),
             "attention_mask": attention_mask,
-            "ids_exemplar_source_mask": kwargs.get("ids_exemplar_source_mask"),
             "ids_exemplar_target_mask": kwargs.get("ids_exemplar_target_mask"),
-            "ids_latent_edit_mask": kwargs.get("ids_latent_edit_mask"),
-            "scope_mask": kwargs.get("scope_mask"),
-            "boi_token_id": kwargs.get("boi_token_id"),
-            "eoi_token_id": kwargs.get("eoi_token_id")
+            "scope_mask": kwargs.get("scope_mask")
         })
         return model_inputs
 

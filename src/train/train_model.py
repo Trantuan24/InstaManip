@@ -8,17 +8,15 @@ import argparse
 import gc
 import logging
 import transformers
-import torch.nn.functional as F
 
-from accelerate import Accelerator, InitProcessGroupKwargs
+from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from typing import Optional
 from dataclasses import dataclass, field, asdict, is_dataclass
-from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService, DistributedReadingService, SequentialReadingService
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 print('============= train code =============')
 
@@ -51,7 +49,7 @@ class TrainingArguments:
     output_dir: str = field(metadata={"help": "The output directory where the model predictions and checkpoints will be written."}, )
     resume_from_checkpoint: Optional[str] = field(default=None, metadata={"help": "The path to a folder with a valid checkpoint for your model."})
     resume_steps: Optional[int] = field(default=None, metadata={"help": "The training sterps of saved checkpoint"})
-    batch_size: Optional[int] = field(default=60, metadata={"help": "The training batch size"})
+    batch_size: Optional[int] = field(default=1, metadata={"help": "The training batch size for torch.utils.data.Dataloader. Always set this as 1. The real batch_size is in configs/data/dataset.yaml."})
     learning_rate: float = field(default=5e-5, metadata={"help": "The initial learning rate for AdamW."})
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
     adam_beta1: float = field(default=0.9, metadata={"help": "Beta1 for AdamW optimizer"})
@@ -138,7 +136,7 @@ def train():
 
 
     assert int(cfg_path.fsdp_plugin is not None) + int(cfg_path.deepspeed_plugin is not None) <= 1
-    if cfg_path.fsdp_plugin is not None:  # - None
+    if cfg_path.fsdp_plugin is not None:
         fsdp_plugin_cfg = OmegaConf.load(cfg_path.fsdp_plugin)
         fsdp_plugin = hydra.utils.instantiate(fsdp_plugin_cfg)
         logger.info('Use FSDP plugin')
@@ -194,14 +192,14 @@ def train():
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":  # True
+    elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     visual_encoder.to(accelerator.device, dtype=weight_dtype)
     logger.info('Freeze visual encoder...')
     visual_encoder.requires_grad_(False)
 
-    if cfg_path.fsdp_plugin is not None:  # = None
+    if cfg_path.fsdp_plugin is not None:
         agent_model = accelerator.prepare(agent_model)
 
     optimizer = torch.optim.AdamW(agent_model.parameters(),
@@ -265,7 +263,6 @@ def train():
         logger.info('Start new epoch')
 
         for step, batch in enumerate(train_dataloader):
-    
             with accelerator.accumulate(agent_model):
                 # Squeeze --------------------------------
                 for k in batch.keys():
@@ -278,13 +275,12 @@ def train():
                     embeds_gen_mask = batch['embeds_gen_mask'].to(accelerator.device)
                     embeds_cmp_mask = batch['embeds_cmp_mask'].to(accelerator.device)
 
-                    # filter out patch embedding in embeds_gen (only useful for mutli-resolution)
                     embeds_valid_mask = torch.logical_or(embeds_gen_mask, embeds_cmp_mask)
-                    embeds_gen_mask = embeds_gen_mask[embeds_valid_mask]  # only select the elements at the position where the value is true in embeds_valid_mask
+                    embeds_gen_mask = embeds_gen_mask[embeds_valid_mask]
                     embeds_cmp_mask = embeds_cmp_mask[embeds_valid_mask]
                     images = images[embeds_valid_mask]
 
-                    if 'patch_position' in batch:  # single resolution: False, multi resolution: True
+                    if 'patch_position' in batch:
                         patch_position = batch['patch_position'].to(accelerator.device) 
                         patch_position = patch_position[embeds_valid_mask]
                     else:
@@ -298,8 +294,8 @@ def train():
                     edits = [item[0] for item in batch["edit"]]
                     edits_clip_embeds = clip.encode_text(edits)
                     edits_sim_matrix = edits_clip_embeds @ edits_clip_embeds.transpose(0, 1)
-                    edits_clip_embeds=edits_clip_embeds.to(weight_dtype).to(accelerator.device),  # (B, 768)
-                    edits_sim_matrix=edits_sim_matrix.to(weight_dtype).to(accelerator.device)  # (B, B)
+                    edits_clip_embeds=edits_clip_embeds.to(weight_dtype).to(accelerator.device)
+                    edits_sim_matrix=edits_sim_matrix.to(weight_dtype).to(accelerator.device)
 
                     if images is not None:
                         image_embeds = visual_encoder(images, batch['patch_position'].to(accelerator.device) if 'patch_position' in batch else None)
@@ -307,20 +303,18 @@ def train():
                         image_embeds = None
 
                 output = agent_model(
-                    input_ids=batch['input_ids'].to(accelerator.device),  # (B, L)
-                    attention_mask=batch['attention_mask'].to(accelerator.device),  # (B, L)
-                    labels=batch['labels'].to(accelerator.device),  # (B, L)
-                    image_embeds=image_embeds,  # (B', 256, 4096)
-                    patch_positions=patch_position if images is not None else None,  # (B', 2)
-                    embeds_gen_mask=embeds_gen_mask if batch['embeds_gen_mask'] is not None else None,  # (B')
-                    embeds_cmp_mask=embeds_cmp_mask if batch['embeds_cmp_mask'] is not None else None,  # (B')
-                    ids_gen_mask=batch['ids_gen_mask'].to(accelerator.device),  # (B, L)
-                    ids_cmp_mask=batch['ids_cmp_mask'].to(accelerator.device),  # (B, L)
-                    ids_exemplar_source_mask=batch['ids_exemplar_source_mask'].to(accelerator.device),  # (B, L)
-                    ids_exemplar_target_mask=batch['ids_exemplar_target_mask'].to(accelerator.device),  # (B, L)
-                    ids_latent_edit_mask=batch['ids_latent_edit_mask'].to(accelerator.device),  # (B, L)
-                    scope_mask=batch['scope_mask'].to(weight_dtype).to(accelerator.device),  # (B, L, L)
-                    edits_clip_embeds=edits_clip_embeds,
+                    input_ids=batch['input_ids'].to(accelerator.device),
+                    attention_mask=batch['attention_mask'].to(accelerator.device),
+                    labels=batch['labels'].to(accelerator.device),
+                    image_embeds=image_embeds,
+                    patch_positions=patch_position if images is not None else None,
+                    embeds_gen_mask=embeds_gen_mask if batch['embeds_gen_mask'] is not None else None,
+                    embeds_cmp_mask=embeds_cmp_mask if batch['embeds_cmp_mask'] is not None else None,
+                    ids_gen_mask=batch['ids_gen_mask'].to(accelerator.device),
+                    ids_cmp_mask=batch['ids_cmp_mask'].to(accelerator.device),
+                    ids_exemplar_target_mask=batch['ids_exemplar_target_mask'].to(accelerator.device),
+                    ids_latent_edit_mask=batch['ids_latent_edit_mask'].to(accelerator.device),
+                    scope_mask=batch['scope_mask'].to(weight_dtype).to(accelerator.device),
                     edits_sim_matrix=edits_sim_matrix
                 )
                 loss = output['total_loss']
@@ -356,6 +350,6 @@ def train():
 
 if __name__ == '__main__':
     # Enable spawn to avoid errors on H100 cluster ---------------------------
-    torch.multiprocessing.set_start_method("spawn")
+    torch.multiprocessing.set_start_method("spawn")  # can be commented out on A100
     # ------------------------------------------------------------------------
     train()
