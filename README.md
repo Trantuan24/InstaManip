@@ -1,6 +1,6 @@
 # Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation
 
-### CVPR 2025
+### CVPR 2025 (Highlight)
 
 ### [Project Page](https://bolinlai.github.io/projects/InstaManip/) | [Paper](https://arxiv.org/pdf/2412.01027) | [HuggingFace](https://huggingface.co/bolinlai/InstaManip)
 
