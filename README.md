@@ -116,7 +116,7 @@ python zero_to_fp32.py . ./pytorch_model.bin
 
 Go back to the project root directory and run the following commands. The inference results will be saved in `checkpoint-xxxx/inference-xxxx-xx`.
 
-Using one pair of examplar images (1-shot):
+Using one pair of exemplar images (1-shot):
 
 ```shell
 # In distribution
@@ -126,7 +126,7 @@ python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xx
 python src/inference/eval_model.py --ckpt ./train_output/your_path/checkpoint-xxxx/pytorch_model.bin --setting out_of_dist
 ```
 
-Using multiple examplar images (few-shot):
+Using multiple exemplar images (few-shot):
 
 
 ```shell
