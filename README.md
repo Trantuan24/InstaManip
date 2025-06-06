@@ -157,11 +157,12 @@ python src/metrics/metrics.py  --gen_path ./train_output/your_path/checkpoint-xx
 If you find our paper helpful to your work, please cite with this BibTex.
 
 ```BibTex
-@article{lai2024unleashing,
-  title={Unleashing In-context Learning of Autoregressive Models for Few-shot Image Manipulation},
+@inproceedings{lai2025unleashing,
+  title={Unleashing in-context learning of autoregressive models for few-shot image manipulation},
   author={Lai, Bolin and Juefei-Xu, Felix and Liu, Miao and Dai, Xiaoliang and Mehta, Nikhil and Zhu, Chenguang and Huang, Zeyi and Rehg, James M and Lee, Sangmin and Zhang, Ning and others},
-  journal={arXiv preprint arXiv:2412.01027},
-  year={2024}
+  booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
+  pages={18346--18357},
+  year={2025}
 }
 ```
 
