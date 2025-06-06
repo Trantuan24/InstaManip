@@ -159,7 +159,7 @@ If you find our paper helpful to your work, please cite with this BibTex.
 ```BibTex
 @inproceedings{lai2025unleashing,
   title={Unleashing in-context learning of autoregressive models for few-shot image manipulation},
-  author={Lai, Bolin and Juefei-Xu, Felix and Liu, Miao and Dai, Xiaoliang and Mehta, Nikhil and Zhu, Chenguang and Huang, Zeyi and Rehg, James M and Lee, Sangmin and Zhang, Ning and others},
+  author={Lai, Bolin and Juefei-Xu, Felix and Liu, Miao and Dai, Xiaoliang and Mehta, Nikhil and Zhu, Chenguang and Huang, Zeyi and Rehg, James M and Lee, Sangmin and Zhang, Ning and Xiao, Tong},
   booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
   pages={18346--18357},
   year={2025}
