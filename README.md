@@ -2,7 +2,7 @@
 
 ### CVPR 2025 (Highlight)
 
-### [Project Page](https://bolinlai.github.io/projects/InstaManip/) | [Paper](https://arxiv.org/pdf/2412.01027) | [HuggingFace](https://huggingface.co/bolinlai/InstaManip)
+### [Project Page](https://bolinlai.github.io/projects/InstaManip/) | [Paper](https://openaccess.thecvf.com/content/CVPR2025/papers/Lai_Unleashing_In-context_Learning_of_Autoregressive_Models_for_Few-shot_Image_Manipulation_CVPR_2025_paper.pdf) | [HuggingFace](https://huggingface.co/bolinlai/InstaManip)
 
 #### [Bolin Lai](https://bolinlai.github.io/), [Felix Juefei-Xu](https://xujuefei.com/), [Miao Liu](https://aptx4869lm.github.io/), [Xiaoliang Dai](https://sites.google.com/view/xiaoliangdai/), [Nikhil Mehta](https://hockeybro12.github.io/), [Chenguang Zhu](https://cs.stanford.edu/~cgzhu/), [Zeyi Huang](https://oodbag.github.io/), [James M. Rehg](https://rehg.org/), [Sangmin Lee](https://sites.google.com/view/sangmin-lee), [Ning Zhang](https://n-zhang.github.io/), [Tong Xiao](http://xiaotong.me/)
 
