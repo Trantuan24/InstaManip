@@ -1,0 +1,26 @@
+dataset_path: ./data/train/ip2p_subset.jsonl
+image_root: ./data/ip2p
+output_dir: /kaggle/working/train_output_kaggle_mock
+
+# Số mẫu tối đa đọc từ JSONL (đặt None để lấy toàn bộ)
+max_samples: 4000
+train_split: 0.9
+
+batch_size: 8
+num_workers: 2
+num_epochs: 3
+learning_rate: 0.0005
+weight_decay: 0.0
+
+image_size: 128
+embed_dim: 256
+vocab_max_size: 4000
+device: auto  # "auto" → dùng cuda nếu có, hoặc đặt "cpu"
+seed: 42
+
+log_interval: 20
+val_interval: 1
+
+# Lưu mô hình & log
+save_model: true
+save_every_epochs: 1
