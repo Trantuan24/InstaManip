@@ -1,0 +1,24 @@
+dataset_path: ./data/train/ip2p_subset.jsonl
+image_root: ./data/ip2p
+output_dir: /kaggle/working/train_output_kaggle_mock_large
+
+max_samples: null          # dùng toàn bộ dataset
+train_split: 0.9
+
+batch_size: 12
+num_workers: 4
+num_epochs: 12
+learning_rate: 0.0003
+weight_decay: 0.0001
+
+image_size: 128
+embed_dim: 512
+vocab_max_size: 8000
+device: auto
+seed: 42
+
+log_interval: 25
+val_interval: 1
+
+save_model: true
+save_every_epochs: 2
