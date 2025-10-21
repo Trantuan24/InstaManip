@@ -4,8 +4,8 @@ Repo InstaManip gốc yêu cầu mô hình 17B + SDXL nên vượt khả năng G
 
 ## Thành phần
 
-- `mock_training.yaml`: cấu hình mặc định (nhanh, embed 256, 3 epoch).
-- `mock_training_large.yaml`: cấu hình “sâu hơn” (nhiều epoch, embed 512, batch lớn hơn) dành cho khi bạn muốn huấn luyện lâu hơn trên Kaggle.
+- `mock_training.yaml`: cấu hình mặc định (nhanh, embed 256, 1 layer transformer).
+- `mock_training_large.yaml`: cấu hình “sâu hơn” (embed 512, 2 layer transformer, loss contrastive kèm MSE) dành cho khi bạn muốn huấn luyện lâu hơn trên Kaggle.
 - `scripts/train_kaggle_mock.py`: script PyTorch thuần, không phụ thuộc Hydra/DeepSpeed, dùng cấu hình YAML ở trên để huấn luyện mô hình mini.
 
 ## Cách chạy trên Kaggle Notebook
@@ -29,6 +29,8 @@ Muốn chạy cấu hình sâu hơn: thay `mock_training.yaml` bằng `mock_trai
 - `max_samples`: số mẫu đọc từ JSONL. `mock_training_large.yaml` mặc định là `null` (dùng toàn bộ subset).
 - `batch_size`, `num_epochs`, `learning_rate`, `weight_decay`: điều chỉnh nhịp train.
 - `image_size`, `embed_dim`: điều chỉnh kích thước ảnh và độ lớn embedding.
+- `num_visual_blocks`, `num_transformer_layers`, `num_transformer_heads`, `ff_multiplier`, `dropout`: kiểm soát kích thước mô hình.
+- `loss_mse_weight`, `loss_contrastive_weight`, `contrastive_temperature`: trộn loss MSE với loss contrastive (InfoNCE).
 - `train_split`: tỉ lệ train/val (ví dụ 0.9 nghĩa là 90% train, 10% val).
 
 ## Lưu ý

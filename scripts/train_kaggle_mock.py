@@ -50,6 +50,14 @@ class TrainConfig:
     image_size: int = 128
     embed_dim: int = 256
     vocab_max_size: int = 4000
+    num_visual_blocks: int = 4
+    num_transformer_layers: int = 1
+    num_transformer_heads: int = 4
+    ff_multiplier: int = 4
+    dropout: float = 0.1
+    loss_mse_weight: float = 1.0
+    loss_contrastive_weight: float = 0.0
+    contrastive_temperature: float = 0.07
     device: str = "auto"
     seed: int = 42
     log_interval: int = 20
@@ -215,22 +223,23 @@ def collate_batch(batch: List[Dict[str, torch.Tensor]], pad_idx: int) -> Dict[st
 # -----------------------------
 
 class TinyVisualEncoder(nn.Module):
-    def __init__(self, embed_dim: int = 256) -> None:
+    def __init__(self, embed_dim: int = 256, num_blocks: int = 4, base_channels: int = 32) -> None:
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=5, stride=2, padding=2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-        )
+        layers: List[nn.Module] = []
+        in_channels = 3
+        channels = base_channels
+        for _ in range(num_blocks):
+            layers.append(nn.Conv2d(in_channels, channels, kernel_size=3, stride=2, padding=1))
+            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1))
+            layers.append(nn.ReLU(inplace=True))
+            in_channels = channels
+            channels = min(channels * 2, embed_dim)
+        self.conv = nn.Sequential(*layers)
         self.proj = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(128, embed_dim),
+            nn.Linear(in_channels, embed_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -239,24 +248,61 @@ class TinyVisualEncoder(nn.Module):
         return x
 
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, dim: int, max_len: int = 512) -> None:
+        super().__init__()
+        pe = torch.zeros(max_len, dim)
+        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, dim, 2, dtype=torch.float32) * (-math.log(10000.0) / dim))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe.unsqueeze(0), persistent=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.pe[:, : x.size(1)]
+
+
 class TinyFusionModel(nn.Module):
-    def __init__(self, vocab_size: int, embed_dim: int = 256) -> None:
+    def __init__(
+        self,
+        vocab_size: int,
+        embed_dim: int = 256,
+        num_visual_blocks: int = 4,
+        num_transformer_layers: int = 1,
+        num_transformer_heads: int = 4,
+        ff_multiplier: int = 4,
+        dropout: float = 0.1,
+    ) -> None:
         super().__init__()
         self.embed_dim = embed_dim
-        self.visual_encoder = TinyVisualEncoder(embed_dim=embed_dim)
+        self.visual_encoder = TinyVisualEncoder(embed_dim=embed_dim, num_blocks=num_visual_blocks)
         self.text_embedding = nn.Embedding(vocab_size, embed_dim)
+        self.positional_encoding = PositionalEncoding(embed_dim)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim,
+            nhead=num_transformer_heads,
+            dim_feedforward=embed_dim * ff_multiplier,
+            dropout=dropout,
+            activation="gelu",
+            batch_first=True,
+        )
+        self.text_transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
         self.text_norm = nn.LayerNorm(embed_dim)
         self.predictor = nn.Sequential(
+            nn.Linear(embed_dim * 2, embed_dim * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(embed_dim * 2, embed_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(embed_dim, embed_dim),
         )
 
     def encode_text(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        embeddings = self.text_embedding(tokens)  # (B, L, D)
-        mask = mask.unsqueeze(-1)  # (B, L, 1)
-        summed = (embeddings * mask).sum(dim=1)
-        lengths = mask.sum(dim=1).clamp_min(1.0)
+        embeddings = self.text_embedding(tokens)
+        embeddings = self.positional_encoding(embeddings)
+        key_padding = mask == 0
+        transformed = self.text_transformer(embeddings, src_key_padding_mask=key_padding)
+        mask_float = mask.unsqueeze(-1)
+        summed = (transformed * mask_float).sum(dim=1)
+        lengths = mask_float.sum(dim=1).clamp_min(1.0)
         avg = summed / lengths
         return self.text_norm(avg)
 
@@ -273,11 +319,21 @@ class TinyFusionModel(nn.Module):
         return pred, source_feat
 
 
+def contrastive_loss(pred: torch.Tensor, target: torch.Tensor, temperature: float = 0.07) -> torch.Tensor:
+    pred_norm = F.normalize(pred, dim=-1)
+    target_norm = F.normalize(target, dim=-1)
+    logits = pred_norm @ target_norm.transpose(0, 1) / temperature
+    labels = torch.arange(logits.size(0), device=logits.device)
+    loss_i = F.cross_entropy(logits, labels)
+    loss_t = F.cross_entropy(logits.transpose(0, 1), labels)
+    return 0.5 * (loss_i + loss_t)
+
+
 # -----------------------------
 # Huấn luyện
 # -----------------------------
 
-def evaluate(model: TinyFusionModel, loader: DataLoader, device: torch.device) -> Dict[str, float]:
+def evaluate(model: TinyFusionModel, loader: DataLoader, device: torch.device, cfg: TrainConfig) -> Dict[str, float]:
     model.eval()
     total_loss = 0.0
     total_batches = 0
@@ -290,10 +346,16 @@ def evaluate(model: TinyFusionModel, loader: DataLoader, device: torch.device) -
 
             pred, _ = model(source, tokens, mask)
             target_feat = model.visual_encoder(target)
-            loss = F.mse_loss(pred, target_feat)
-            total_loss += loss.item()
+            loss_val = 0.0
+            if cfg.loss_mse_weight > 0:
+                loss_val += cfg.loss_mse_weight * F.mse_loss(pred, target_feat)
+            if cfg.loss_contrastive_weight > 0:
+                loss_val += cfg.loss_contrastive_weight * contrastive_loss(
+                    pred, target_feat, temperature=cfg.contrastive_temperature
+                )
+            total_loss += loss_val.item()
             total_batches += 1
-    return {"mse": total_loss / max(total_batches, 1)}
+    return {"val_loss": total_loss / max(total_batches, 1)}
 
 
 def train_loop(cfg: TrainConfig) -> None:
@@ -336,11 +398,19 @@ def train_loop(cfg: TrainConfig) -> None:
         collate_fn=lambda b: collate_batch(b, pad_idx=pad_idx),
     )
 
-    model = TinyFusionModel(vocab_size=dataset.vocab.size, embed_dim=cfg.embed_dim).to(device)
+    model = TinyFusionModel(
+        vocab_size=dataset.vocab.size,
+        embed_dim=cfg.embed_dim,
+        num_visual_blocks=cfg.num_visual_blocks,
+        num_transformer_layers=cfg.num_transformer_layers,
+        num_transformer_heads=cfg.num_transformer_heads,
+        ff_multiplier=cfg.ff_multiplier,
+        dropout=cfg.dropout,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 
     log_path = output_dir / "training_log.json"
-    history: Dict[str, List[float]] = {"train_loss": [], "val_mse": []}
+    history: Dict[str, List[float]] = {"train_loss": [], "val_loss": []}
 
     global_step = 0
     for epoch in range(1, cfg.num_epochs + 1):
@@ -354,7 +424,13 @@ def train_loop(cfg: TrainConfig) -> None:
 
             pred, _ = model(source, tokens, mask)
             target_feat = model.visual_encoder(target)
-            loss = F.mse_loss(pred, target_feat)
+            loss = 0.0
+            if cfg.loss_mse_weight > 0:
+                loss = loss + cfg.loss_mse_weight * F.mse_loss(pred, target_feat)
+            if cfg.loss_contrastive_weight > 0:
+                loss = loss + cfg.loss_contrastive_weight * contrastive_loss(
+                    pred, target_feat, temperature=cfg.contrastive_temperature
+                )
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -370,9 +446,9 @@ def train_loop(cfg: TrainConfig) -> None:
                 running_loss = 0.0
 
         if epoch % cfg.val_interval == 0:
-            metrics = evaluate(model, val_loader, device)
-            history["val_mse"].append(metrics["mse"])
-            print(f"[Validation] Epoch {epoch}: MSE={metrics['mse']:.6f}")
+            metrics = evaluate(model, val_loader, device, cfg)
+            history["val_loss"].append(metrics["val_loss"])
+            print(f"[Validation] Epoch {epoch}: loss={metrics['val_loss']:.6f}")
 
         if cfg.save_model and (epoch % cfg.save_every_epochs == 0):
             ckpt_path = output_dir / f"mock_model_epoch{epoch}.pt"
