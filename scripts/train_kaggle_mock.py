@@ -29,6 +29,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 import yaml
 import re
+import time
 
 
 # -----------------------------
@@ -337,6 +338,8 @@ def evaluate(model: TinyFusionModel, loader: DataLoader, device: torch.device, c
     model.eval()
     total_loss = 0.0
     total_batches = 0
+    mse_accum = 0.0
+    contrastive_accum = 0.0
     with torch.no_grad():
         for batch in loader:
             source = batch["source"].to(device)
@@ -348,14 +351,20 @@ def evaluate(model: TinyFusionModel, loader: DataLoader, device: torch.device, c
             target_feat = model.visual_encoder(target)
             loss_val = 0.0
             if cfg.loss_mse_weight > 0:
-                loss_val += cfg.loss_mse_weight * F.mse_loss(pred, target_feat)
+                mse = F.mse_loss(pred, target_feat)
+                loss_val += cfg.loss_mse_weight * mse
+                mse_accum += mse.item()
             if cfg.loss_contrastive_weight > 0:
-                loss_val += cfg.loss_contrastive_weight * contrastive_loss(
-                    pred, target_feat, temperature=cfg.contrastive_temperature
-                )
+                cl = contrastive_loss(pred, target_feat, temperature=cfg.contrastive_temperature)
+                loss_val += cfg.loss_contrastive_weight * cl
+                contrastive_accum += cl.item()
             total_loss += loss_val.item()
             total_batches += 1
-    return {"val_loss": total_loss / max(total_batches, 1)}
+    return {
+        "val_loss": total_loss / max(total_batches, 1),
+        "val_mse": mse_accum / max(total_batches, 1) if total_batches > 0 else 0.0,
+        "val_contrastive": contrastive_accum / max(total_batches, 1) if total_batches > 0 else 0.0,
+    }
 
 
 def train_loop(cfg: TrainConfig) -> None:
@@ -410,9 +419,14 @@ def train_loop(cfg: TrainConfig) -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 
     log_path = output_dir / "training_log.json"
-    history: Dict[str, List[float]] = {"train_loss": [], "val_loss": []}
+    history: Dict[str, List[float]] = {"train_loss": [], "val_loss": [], "val_mse": [], "val_contrastive": []}
 
     global_step = 0
+    best_val = float("inf")
+    best_epoch = 0
+    best_ckpt: Path | None = None
+    start_time = time.time()
+
     for epoch in range(1, cfg.num_epochs + 1):
         model.train()
         running_loss = 0.0
@@ -448,7 +462,12 @@ def train_loop(cfg: TrainConfig) -> None:
         if epoch % cfg.val_interval == 0:
             metrics = evaluate(model, val_loader, device, cfg)
             history["val_loss"].append(metrics["val_loss"])
+            history["val_mse"].append(metrics["val_mse"])
+            history["val_contrastive"].append(metrics["val_contrastive"])
             print(f"[Validation] Epoch {epoch}: loss={metrics['val_loss']:.6f}")
+            if metrics["val_loss"] < best_val:
+                best_val = metrics["val_loss"]
+                best_epoch = epoch
 
         if cfg.save_model and (epoch % cfg.save_every_epochs == 0):
             ckpt_path = output_dir / f"mock_model_epoch{epoch}.pt"
@@ -462,11 +481,29 @@ def train_loop(cfg: TrainConfig) -> None:
                 ckpt_path,
             )
             print(f"Đã lưu checkpoint tại {ckpt_path}")
+            if epoch == best_epoch:
+                best_ckpt = ckpt_path
 
         with log_path.open("w", encoding="utf-8") as f:
             json.dump(history, f, indent=2)
 
+    elapsed = time.time() - start_time
+    summary = {
+        "dataset_size": len(dataset),
+        "train_size": len(train_set),
+        "val_size": len(val_set),
+        "total_steps": global_step,
+        "best_val_loss": best_val,
+        "best_epoch": best_epoch,
+        "best_checkpoint": str(best_ckpt) if best_ckpt is not None else None,
+        "elapsed_seconds": elapsed,
+    }
+    history["summary"] = summary
+    with log_path.open("w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2)
+
     print("Huấn luyện hoàn tất. Log lưu ở", log_path)
+    print("Tóm tắt:", summary)
 
 
 # -----------------------------
